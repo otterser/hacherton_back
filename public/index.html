@@ -1,85 +1,329 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-  <meta charset="utf-8">
-  <title>정신과 병원 찾기</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    #map {
-      width: 100%;
-      height: 500px;
-    }
-    #result {
-      margin-top: 1em;
-      font-size: 1em;
-    }
-  </style>
-  <script type="text/javascript" src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=kBrifyxiGwHnIs67ZqihO7r67IQHB2x03bIroMti"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>내 주변 정신병원 찾기</title>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script type="text/javascript" src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=f101t18lfw"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: Arial, sans-serif;
+        }
+        #container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+        #map {
+            width: 40%;
+            height: 100%;
+            float: left;
+        }
+        #hospital-list {
+            width: 60%;
+            height: 100%;
+            float: right;
+            background-color: white;
+            padding: 20px;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        .hospital-item {
+            margin-bottom: 15px;
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.2s;
+        }
+        .hospital-item:hover {
+            background-color: #f0f0f0;
+            transform: translateY(-2px);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .hospital-name {
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 8px;
+            color: #333;
+        }
+        .hospital-address {
+            font-size: 14px;
+            color: #555;
+            margin-bottom: 5px;
+        }
+        .hospital-distance {
+            font-size: 14px;
+            color: #0080ff;
+            font-weight: 500;
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            z-index: 200;
+        }
+
+        #search-button {
+            margin-top: 5px;
+            padding: 5px 10px;
+            background-color: #0080ff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        #search-button:hover {
+            background-color: #0066cc;
+        }
+    </style>
 </head>
 <body>
+    <div id="container">
+        <div id="map"></div>
+        <div id="hospital-list">
+            <h2 style="font-size: 24px; margin-bottom: 20px; color: #0080ff;">내 주변 정신병원</h2>
+            <div id="results"></div>
+        </div>
 
-<h2>내 주변 정신과 병원 찾기</h2>
-<div id="map"></div>
-<div id="result">로딩 중...</div>
+        <div class="loading" style="display: none;">
+            <p>위치 및 병원 정보를 불러오는 중...</p>
+        </div>
+    </div>
 
-<script>
-  // 현재 위치 가져오기
-  navigator.geolocation.getCurrentPosition(success, error);
+    <script>
+        let map;
+        let currentPosition;
+        let markers = [];
+        let infoWindows = [];
 
-  function success(position) {
-    const lat = position.coords.latitude;
-    const lng = position.coords.longitude;
-
-    const map = new naver.maps.Map('map', {
-      center: new naver.maps.LatLng(lat, lng),
-      zoom: 15
-    });
-
-    // 사용자 현재 위치 마커
-    new naver.maps.Marker({
-      position: new naver.maps.LatLng(lat, lng),
-      map: map,
-      title: '현재 위치'
-    });
-
-    // 장소 검색 (정신, 우울증 포함)
-    const query = '정신과 우울증 병원';
-
-    naver.maps.Service.search({
-      query: query,
-      coordinate: new naver.maps.LatLng(lat, lng),
-      filter: 'hospital'
-    }, function(status, response) {
-      if (status !== naver.maps.Service.Status.OK) {
-        document.getElementById('result').innerText = '검색에 실패했습니다.';
-        return;
-      }
-
-      const items = response.items;
-      if (items.length === 0) {
-        document.getElementById('result').innerText = '주변에 병원이 없습니다.';
-        return;
-      }
-
-      let resultHTML = '<ul>';
-      items.forEach(item => {
-        const position = new naver.maps.LatLng(item.point.y, item.point.x);
-        new naver.maps.Marker({
-          position: position,
-          map: map,
-          title: item.title.replace(/<[^>]+>/g, '') // 태그 제거
+        $(document).ready(function() {
+            initMap();
         });
-        resultHTML += <li><strong>${item.title.replace(/<[^>]+>/g, '')}</strong><br>${item.roadAddress}</li>;
-      });
-      resultHTML += '</ul>';
-      document.getElementById('result').innerHTML = resultHTML;
-    });
-  }
 
-  function error() {
-    alert('위치 정보를 가져올 수 없습니다.');
-  }
-</script>
+        // 지도 초기화
+        function initMap() {
+            $('.loading').show();
+            
+            // 현재 위치 가져오기
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    currentPosition = new naver.maps.LatLng(lat, lng);
+                    
+                    // 지도 생성
+                    map = new naver.maps.Map('map', {
+                        center: currentPosition,
+                        zoom: 14,
+                        mapTypeControl: true
+                    });
+                    
+                    // 현재 위치 마커 추가
+                    const marker = new naver.maps.Marker({
+                        position: currentPosition,
+                        map: map,
+                        icon: {
+                            url: 'https://openapi.map.naver.com/openapi/v3/static/icons/marker_red.png',
+                            size: new naver.maps.Size(24, 37),
+                            origin: new naver.maps.Point(0, 0),
+                            anchor: new naver.maps.Point(12, 37)
+                        },
+                        zIndex: 100
+                    });
+                    
+                    // 반경 원 표시
+                    const circle = new naver.maps.Circle({
+                        map: map,
+                        center: currentPosition,
+                        radius: 2000,  // 2km
+                        fillColor: 'rgba(0, 128, 255, 0.1)',
+                        strokeColor: 'rgba(0, 128, 255, 0.5)',
+                        strokeWeight: 2
+                    });
+                    
+                    // 주변 정신병원 검색 (고정 2km 반경)
+                    searchHospitals(currentPosition);
+                    
+                }, function(error) {
+                    alert('위치 정보를 가져오는데 실패했습니다: ' + error.message);
+                    $('.loading').hide();
+                    
+                    // 기본 위치 (서울 시청)
+                    const defaultPosition = new naver.maps.LatLng(37.5666805, 126.9784147);
+                    map = new naver.maps.Map('map', {
+                        center: defaultPosition,
+                        zoom: 14
+                    });
+                }, {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                });
+            } else {
+                alert('이 브라우저에서는 위치 정보를 지원하지 않습니다.');
+                $('.loading').hide();
+            }
+        }
 
+        // 주변 정신병원 검색 (반경 고정 2km)
+        function searchHospitals(position) {
+            $('.loading').show();
+            clearMarkers();
+            
+            // 반경 원 표시 (고정 2km)
+            const radius = 2000;
+            updateCircle(position, radius);
+            
+            // 데모 목적으로 가상의 병원 데이터 사용
+            setTimeout(function() {
+                const mockHospitals = generateMockHospitals(position, radius);
+                displayHospitals(mockHospitals, position);
+                $('.loading').hide();
+            }, 1000);
+        }
+
+        //가상 병원 데이터 생성 (실제 구현 시 제거)
+        function generateMockHospitals(position, radius) {
+            const hospitals = [];
+            const count = Math.floor(Math.random() * 10) + 5; // 5~15개 정도
+            
+            for (let i = 0; i < count; i++) {
+                // 반경 내 무작위 위치 생성
+                const r = Math.random() * radius;
+                const theta = Math.random() * 2 * Math.PI;
+                const dx = r * Math.cos(theta);
+                const dy = r * Math.sin(theta);
+                
+                // 위도 1도 = 약 111km, 경도 1도 = 약 111km * cos(위도)
+                const lat = position.lat() + (dy / 111000);
+                const lng = position.lng() + (dx / (111000 * Math.cos(position.lat() * Math.PI / 180)));
+                
+                hospitals.push({
+                    name: `${i + 1}번 정신건강의학과의원`,
+                    address: `서울특별시 강남구 테헤란로 ${Math.floor(Math.random() * 500) + 100}`,
+                    position: new naver.maps.LatLng(lat, lng),
+                    distance: Math.round(r)
+                });
+            }
+            
+            return hospitals;
+        }
+
+        // 병원 정보 표시
+        function displayHospitals(hospitals, userPosition) {
+            const $results = $('#results');
+            $results.empty();
+            
+            if (hospitals.length === 0) {
+                $results.html('<p>주변에 정신병원이 없습니다.</p>');
+                return;
+            }
+            
+            // 거리순으로 정렬
+            hospitals.sort((a, b) => a.distance - b.distance);
+            
+            hospitals.forEach((hospital, index) => {
+                // 마커 추가
+                const marker = new naver.maps.Marker({
+                    position: hospital.position,
+                    map: map,
+                    title: hospital.name,
+                    zIndex: 50
+                });
+                
+                // 정보창 생성
+                const infoWindow = new naver.maps.InfoWindow({
+                    content: `
+                        <div style="padding: 10px; width: 200px;">
+                            <h4>${hospital.name}</h4>
+                            <p>${hospital.address}</p>
+                            <p>현재 위치에서 ${hospital.distance}m</p>
+                        </div>
+                    `
+                });
+                
+                // 마커 클릭 이벤트
+                naver.maps.Event.addListener(marker, 'click', function() {
+                    if (infoWindow.getMap()) {
+                        infoWindow.close();
+                    } else {
+                        infoWindow.open(map, marker);
+                    }
+                });
+                
+                markers.push(marker);
+                infoWindows.push(infoWindow);
+                
+                // 목록에 표시
+                const $item = $(`
+                    <div class="hospital-item" data-index="${index}">
+                        <div class="hospital-name">${hospital.name}</div>
+                        <div class="hospital-address">${hospital.address}</div>
+                        <div class="hospital-distance">현재 위치에서 ${hospital.distance}m</div>
+                    </div>
+                `);
+                
+                $item.click(function() {
+                    const idx = $(this).data('index');
+                    map.setCenter(hospitals[idx].position);
+                    map.setZoom(16);
+                    
+                    // 모든 정보창 닫기
+                    infoWindows.forEach(function(infoWindow) {
+                        infoWindow.close();
+                    });
+                    
+                    // 해당 마커의 정보창 열기
+                    infoWindows[idx].open(map, markers[idx]);
+                });
+                
+                $results.append($item);
+            });
+        }
+
+        // 마커 초기화
+        function clearMarkers() {
+            markers.forEach(function(marker) {
+                marker.setMap(null);
+            });
+            
+            infoWindows.forEach(function(infoWindow) {
+                infoWindow.close();
+            });
+            
+            markers = [];
+            infoWindows = [];
+        }
+
+        // 반경 원 업데이트
+        function updateCircle(position, radius) {
+            // 기존 원 제거
+            if (window.searchCircle) {
+                window.searchCircle.setMap(null);
+            }
+            
+            // 새 원 생성
+            window.searchCircle = new naver.maps.Circle({
+                map: map,
+                center: position,
+                radius: parseInt(radius),
+                fillColor: 'rgba(0, 128, 255, 0.1)',
+                strokeColor: 'rgba(0, 128, 255, 0.5)',
+                strokeWeight: 2
+            });
+        }
+    </script>
 </body>
 </html>

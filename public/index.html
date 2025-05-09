@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>정신과 병원 찾기</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    #map {
+      width: 100%;
+      height: 500px;
+    }
+    #result {
+      margin-top: 1em;
+      font-size: 1em;
+    }
+  </style>
+  <script type="text/javascript" src="https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=kBrifyxiGwHnIs67ZqihO7r67IQHB2x03bIroMti"></script>
+</head>
+<body>
+
+<h2>내 주변 정신과 병원 찾기</h2>
+<div id="map"></div>
+<div id="result">로딩 중...</div>
+
+<script>
+  // 현재 위치 가져오기
+  navigator.geolocation.getCurrentPosition(success, error);
+
+  function success(position) {
+    const lat = position.coords.latitude;
+    const lng = position.coords.longitude;
+
+    const map = new naver.maps.Map('map', {
+      center: new naver.maps.LatLng(lat, lng),
+      zoom: 15
+    });
+
+    // 사용자 현재 위치 마커
+    new naver.maps.Marker({
+      position: new naver.maps.LatLng(lat, lng),
+      map: map,
+      title: '현재 위치'
+    });
+
+    // 장소 검색 (정신, 우울증 포함)
+    const query = '정신과 우울증 병원';
+
+    naver.maps.Service.search({
+      query: query,
+      coordinate: new naver.maps.LatLng(lat, lng),
+      filter: 'hospital'
+    }, function(status, response) {
+      if (status !== naver.maps.Service.Status.OK) {
+        document.getElementById('result').innerText = '검색에 실패했습니다.';
+        return;
+      }
+
+      const items = response.items;
+      if (items.length === 0) {
+        document.getElementById('result').innerText = '주변에 병원이 없습니다.';
+        return;
+      }
+
+      let resultHTML = '<ul>';
+      items.forEach(item => {
+        const position = new naver.maps.LatLng(item.point.y, item.point.x);
+        new naver.maps.Marker({
+          position: position,
+          map: map,
+          title: item.title.replace(/<[^>]+>/g, '') // 태그 제거
+        });
+        resultHTML += <li><strong>${item.title.replace(/<[^>]+>/g, '')}</strong><br>${item.roadAddress}</li>;
+      });
+      resultHTML += '</ul>';
+      document.getElementById('result').innerHTML = resultHTML;
+    });
+  }
+
+  function error() {
+    alert('위치 정보를 가져올 수 없습니다.');
+  }
+</script>
+
+</body>
+</html>
